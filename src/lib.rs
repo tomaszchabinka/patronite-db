@@ -15,15 +15,7 @@ pub struct Category {
 }
 
 pub fn get_list_of_categories() -> Vec<Category> {
-    let response = blocking::get(String::from(PATRONITE_URL) + "/kategoria/47/polityka")
-        .expect("Failed to send request");
-
-    // Read the response body as a string
-    let body = response.text().expect("Failed to read response body");
-
-    // Parse the HTML body
-    let document: Html = Html::parse_document(&body);
-
+    let document = get_html_document("/kategoria/47/polityka", 1);
     let selector = Selector::parse("div.tags > div").expect("Failed to parse CSS selector");
 
     return document
@@ -69,7 +61,7 @@ pub struct CreatorSummary {
 pub fn get_list_of_creators(category: &Category) -> Vec<CreatorSummary> {
     println!("Fetching creators for category: {}", category.name);
 
-    let mut page = 1;
+    let mut page: u16 = 1;
     let mut our_choice_selection = vec![];
     let mut all_creators = vec![];
 
@@ -131,7 +123,7 @@ pub fn get_list_of_creators(category: &Category) -> Vec<CreatorSummary> {
     all_creators
 }
 
-fn get_html_document(url: &str, page: u8) -> Html {
+fn get_html_document(url: &str, page: u16) -> Html {
     let response =
         blocking::get(format!("{PATRONITE_URL}{url}?page={page}")).expect("Failed to send request");
 
