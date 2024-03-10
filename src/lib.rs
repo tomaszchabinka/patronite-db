@@ -1,13 +1,15 @@
-use std::{collections::HashSet, vec};
-
+use chrono::{DateTime, Utc};
+use influxdb::InfluxDbWriteable;
 use regex::Regex;
 use reqwest::blocking;
 use scraper::{Html, Selector};
+use std::{collections::HashSet, vec};
 
 use std::str::FromStr;
 
 const PATRONITE_URL: &str = "https://patronite.pl";
 
+#[derive(Debug, Clone)]
 pub struct Category {
     pub id: u8,
     pub name: String,
@@ -44,18 +46,22 @@ pub fn get_list_of_categories() -> Vec<Category> {
         .collect::<Vec<Category>>();
 }
 
-#[derive(Debug)]
+#[derive(Debug, InfluxDbWriteable, Clone)]
 pub struct CreatorSummary {
-    pub name: String,
-    pub tags: Vec<String>,
-    pub category_id: u8,
+    pub time: DateTime<Utc>,
     pub number_of_patrons: u16,
     pub monthly_revenue: u32,
     pub total_revenue: u32,
+    #[influxdb(tag)]
+    pub name: String,
+    #[influxdb(tag)]
+    pub tags: String,
+    #[influxdb(tag)]
     pub is_recommended: bool,
+    #[influxdb(tag)]
     pub url: String,
+    #[influxdb(tag)]
     pub image_url: String,
-    pub timestamp: u32,
 }
 
 pub fn get_list_of_creators(category: &Category) -> Vec<CreatorSummary> {
@@ -66,7 +72,9 @@ pub fn get_list_of_creators(category: &Category) -> Vec<CreatorSummary> {
     let mut all_creators = vec![];
 
     loop {
-        println!("Fetching page {}... ", page);
+        if page % 10 == 0 {
+            println!("Fetching page {}... ", page);
+        }
         let document: Html = get_html_document(&category.url, page);
 
         if page == 1 {
@@ -81,9 +89,7 @@ pub fn get_list_of_creators(category: &Category) -> Vec<CreatorSummary> {
                 our_choice_selection.append(
                     &mut document
                         .select(&_our_choice_selector)
-                        .map(|element| {
-                            get_creator_summary(&element, category.id, &HashSet::<&String>::new())
-                        })
+                        .map(|element| get_creator_summary(&element, &HashSet::<&String>::new()))
                         .collect::<Vec<CreatorSummary>>(),
                 );
             }
@@ -101,7 +107,7 @@ pub fn get_list_of_creators(category: &Category) -> Vec<CreatorSummary> {
         all_creators.append(
             &mut document
                 .select(&all_selector)
-                .map(|element| get_creator_summary(&element, category.id, &favourite_ids))
+                .map(|element| get_creator_summary(&element, &favourite_ids))
                 .collect::<Vec<CreatorSummary>>(),
         );
 
@@ -134,7 +140,6 @@ fn get_html_document(url: &str, page: u16) -> Html {
 
 fn get_creator_summary(
     element: &scraper::ElementRef,
-    category_id: u8,
     favourite_ids: &HashSet<&String>,
 ) -> CreatorSummary {
     let numbers = element
@@ -156,8 +161,8 @@ fn get_creator_summary(
         tags: element
             .select(&Selector::parse("div.card__content--tags > span").unwrap())
             .map(|tag| tag.text().collect::<String>().trim().to_owned())
-            .collect::<Vec<String>>(),
-        category_id,
+            .collect::<Vec<String>>()
+            .join(","),
         number_of_patrons: if !numbers.is_empty() {
             parse_number(&numbers[0]) as u16
         } else {
@@ -182,10 +187,7 @@ fn get_creator_summary(
             .attr("data-src")
             .unwrap()
             .to_owned(),
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as u32,
+        time: Utc::now(),
     }
 }
 
